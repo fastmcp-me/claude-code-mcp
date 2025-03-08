@@ -4,6 +4,28 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import child_process from 'child_process';
 
+// claudeコマンドのパスを環境変数 CLAUDE_BIN から取得（未設定の場合は絶対パスを使用）
+const CLAUDE_BIN = process.env.CLAUDE_BIN || "/home/linuxbrew/.linuxbrew/bin/claude";
+
+// 実行前にClaude CLIの存在を確認し、バージョンも出力
+try {
+  const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
+  console.error(`Claude CLI found: ${versionOutput.trim()}`);
+} catch (err) {
+  console.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
+  console.error(`PATH: ${process.env.PATH}`);
+  // プログラムは続行します - ランタイムでも再チェックします
+}
+
+// Base64 エンコード／デコード ヘルパー関数
+function encodeText(text: string): string {
+  return Buffer.from(text, 'utf8').toString('base64');
+}
+
+function decodeText(encoded: string): string {
+  return Buffer.from(encoded, 'base64').toString('utf8');
+}
+
 class ClaudeCodeServer {
   private server: Server;
 
@@ -31,6 +53,7 @@ class ClaudeCodeServer {
   }
 
   private setupToolHandlers() {
+    // ツールリストの設定
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
@@ -120,87 +143,158 @@ class ClaudeCodeServer {
       ]
     }));
 
+    // ツール実行リクエスト処理
     this.server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params;
-      const runClaudeCommand = (command: string, input?: string): Promise<string> => {
+      const runClaudeCommand = (claudeArgs: string[], stdinInput?: string): Promise<string> => {
         return new Promise((resolve, reject) => {
-          let fullCommand = command;
-          if (input) {
-            fullCommand = `echo "${input.replace(/"/g, '\\"')}" | ${command}`;
-          }
-          child_process.exec(fullCommand, { encoding: 'utf8' }, (error, stdout, stderr) => {
-            const out = stdout as string;
-            const err = stderr as string;
-            if (error) {
-              return reject(err || error.message);
+          // タイムアウト設定 (5分)
+          const timeoutMs = 5 * 60 * 1000;
+          let timeoutId: NodeJS.Timeout;
+          
+          try {
+            // より詳細なデバッグ情報
+            console.error(`Debug: Executing Claude CLI at: ${CLAUDE_BIN}`);
+            console.error(`Debug: Arguments: ${JSON.stringify(claudeArgs)}`);
+            if (stdinInput) console.error(`Debug: Input length: ${stdinInput.length} characters`);
+            
+            // 環境変数をログに出力
+            console.error(`Debug: Environment PATH: ${process.env.PATH}`);
+            
+            const proc = child_process.spawn(CLAUDE_BIN, claudeArgs, { 
+              env: { ...process.env },
+              stdio: ['pipe', 'pipe', 'pipe'] 
+            });
+            
+            // 標準入力がある場合は書き込みと終了
+            if (stdinInput) {
+              proc.stdin.write(stdinInput);
+              proc.stdin.end();
             }
-            resolve(out);
-          });
+            
+            let stdout = '';
+            let stderr = '';
+            
+            proc.stdout.on('data', (data) => { 
+              const chunk = data.toString();
+              stdout += chunk; 
+            });
+            
+            proc.stderr.on('data', (data) => { 
+              const chunk = data.toString();
+              stderr += chunk; 
+              console.error(`Claude stderr: ${chunk}`);
+            });
+            
+            // タイムアウト設定
+            timeoutId = setTimeout(() => {
+              console.error("Command timed out after", timeoutMs, "ms");
+              proc.kill();
+              reject(new Error(`Command timed out after ${timeoutMs / 1000} seconds`));
+            }, timeoutMs);
+            
+            proc.on('close', (code) => {
+              clearTimeout(timeoutId);
+              if (code === 0) {
+                resolve(stdout.trim());
+              } else {
+                console.error(`Debug: Command failed with code ${code}`);
+                console.error(`Debug: stderr: ${stderr}`);
+                reject(new Error(`Command failed with code ${code}: ${stderr}`));
+              }
+            });
+            
+            proc.on('error', (err) => {
+              clearTimeout(timeoutId);
+              console.error("Debug: Process spawn error:", err);
+              reject(err);
+            });
+          } catch (err) {
+            console.error("Failed to spawn process:", err);
+            reject(err);
+          }
         });
       };
 
-      switch (name) {
-        case 'explain_code': {
-          const { code, context } = args;
-          const command = `claude --print "Explain the following code: ${code} ${context}"`;
-          try {
-            const output = await runClaudeCommand(command);
-            return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
+      try {
+        // 文字列の最大長さを制限する関数
+        const truncateIfNeeded = (str: string, maxLength = 10000): string => {
+          if (str.length > maxLength) {
+            console.error(`警告: 入力が長すぎるため切り詰めます (${str.length} -> ${maxLength})`);
+            return str.substring(0, maxLength) + "... [truncated]";
           }
-        }
-        case 'review_code': {
-          const { code, focus_areas } = args;
-          const command = `claude --print "Review the following code and focus on: ${focus_areas}\n${code}"`;
-          try {
-            const output = await runClaudeCommand(command);
-            return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
+          return str;
+        };
+        
+        // エラーを適切に処理するために各ケースを try-catch で囲む
+        switch (name) {
+          case 'explain_code': {
+            const { code, context } = args;
+            try {
+              const encodedCode = encodeText(truncateIfNeeded(code));
+              // ファイルを使用して大きな入力を渡す場合の代替方法
+              const prompt = `Explain the following Base64 encoded code: \n${encodedCode}\n${context || ''}`;
+              const output = await runClaudeCommand(['--print'], prompt);
+              return { content: [{ type: 'text', text: output }] };
+            } catch (err) {
+              console.error("Error in explain_code:", err);
+              throw err;
+            }
           }
-        }
-        case 'fix_code': {
-          const { code, issue_description } = args;
-          const command = `claude --print "Fix the following code given the issue: ${issue_description}\n${code}"`;
-          try {
-            const output = await runClaudeCommand(command);
-            return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
+          // 他のケースも同様にファイル入力を使用するように変更
+          case 'review_code': {
+            const { code, focus_areas } = args;
+            try {
+              const encodedCode = encodeText(truncateIfNeeded(code));
+              const prompt = `Review the following Base64 encoded code (decode it to view original): \n${encodedCode}\nFocus on: ${focus_areas || ''}`;
+              const output = await runClaudeCommand(['--print'], prompt);
+              return { content: [{ type: 'text', text: output }] };
+            } catch (err) {
+              console.error("Error in review_code:", err);
+              throw err;
+            }
           }
-        }
-        case 'edit_code': {
-          const { code, instructions } = args;
-          const command = `claude --print "Edit the following code as per instructions: ${instructions}\n${code}"`;
-          try {
-            const output = await runClaudeCommand(command);
+          case 'fix_code': {
+            const { code, issue_description } = args;
+            const encodedCode = encodeText(truncateIfNeeded(code));
+            const prompt = `Fix the following Base64 encoded code (decode it to view original) given the issue: ${issue_description}\n${encodedCode}`;
+            const output = await runClaudeCommand(['--print'], prompt);
             return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
           }
-        }
-        case 'test_code': {
-          const { code, test_framework } = args;
-          const command = `claude --print "Generate tests for the following code using ${test_framework || 'default'} framework:\n${code}"`;
-          try {
-            const output = await runClaudeCommand(command);
+          case 'edit_code': {
+            const { code, instructions } = args;
+            const encodedCode = encodeText(truncateIfNeeded(code));
+            const prompt = `Edit the following Base64 encoded code (decode it to view original) as per instructions: ${instructions}\n${encodedCode}`;
+            const output = await runClaudeCommand(['--print'], prompt);
             return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
           }
-        }
-        case 'run_command': {
-          const { command, input } = args;
-          try {
-            const output = await runClaudeCommand(command, input);
+          case 'test_code': {
+            const { code, test_framework } = args;
+            const encodedCode = encodeText(truncateIfNeeded(code));
+            const framework = test_framework || 'default';
+            const prompt = `Generate tests for the following Base64 encoded code (decode it to view original) using ${framework} framework:\n${encodedCode}`;
+            const output = await runClaudeCommand(['--print'], prompt);
             return { content: [{ type: 'text', text: output }] };
-          } catch (err) {
-            throw new McpError(500, String(err));
           }
+          case 'run_command': {
+            const { command, input } = args;
+            // 直接ユーザーコマンドを実行する代わりに、Claudeに実行方法を尋ねる
+            const prompt = `User wants to run this command: "${command}" with input: "${input || ''}". Please explain how this command works and what it does.`;
+            const output = await runClaudeCommand(['--print'], prompt);
+            return { content: [{ type: 'text', text: output }] };
+          }
+          case 'your_own_query': {
+            const { query, context } = args;
+            const prompt = `Query: ${query} ${context || ''}`;
+            const output = await runClaudeCommand(['--print'], prompt);
+            return { content: [{ type: 'text', text: output }] };
+          }
+          default:
+            throw new McpError(404, "Unknown tool: " + name);
         }
-        default:
-          throw new McpError(404, `Unknown tool: ${name}`);
+      } catch (err) {
+        console.error("Error executing tool:", err);
+        throw new McpError(500, err instanceof Error ? err.message : String(err));
       }
     });
   }
@@ -208,7 +302,7 @@ class ClaudeCodeServer {
   async run() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('Claude Code MCP server running on stdio');
+    console.error("Claude Code MCP server running on stdio");
   }
 }
 
