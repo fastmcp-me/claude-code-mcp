@@ -104,6 +104,18 @@ class ClaudeCodeServer {
             },
             required: ['command']
           }
+        },
+        {
+          name: 'your_own_query',
+          description: '自由な問い合わせを送信するツール。Hostが独自の問い合わせ文とコンテキストを渡します。',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: '問い合わせ文' },
+              context: { type: 'string', description: '追加コンテキスト', default: '' }
+            },
+            required: ['query']
+          }
         }
       ]
     }));
