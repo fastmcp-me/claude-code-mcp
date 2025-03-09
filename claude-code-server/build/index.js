@@ -54,27 +54,27 @@ if (!envLoaded) {
 console.log(`環境変数LOG_LEVEL: ${process.env.LOG_LEVEL}`);
 // ログファイルパスを決定するシンプルな方法
 let logFilePath = null;
-// 1. まずホームディレクトリに直接書き込みを試みる（これが成功するようです）
+// 1. まずプロジェクトルートに書き込みを試みる
 try {
-    const homeDir = process.env.HOME || process.env.USERPROFILE;
-    if (homeDir) {
-        const homeLogPath = path.resolve(homeDir, '.claude-code-server.log');
-        fs.writeFileSync(homeLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
-        console.log(`ホームディレクトリにログファイルを作成しました: ${homeLogPath}`);
-        logFilePath = homeLogPath;
-    }
+    const projectLogPath = path.resolve(__dirname, '../../claude-code-server.log');
+    fs.writeFileSync(projectLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
+    logFilePath = projectLogPath;
+    console.log(`プロジェクトルートにログファイルを作成: ${logFilePath}`);
 }
 catch (err) {
-    console.error(`ホームディレクトリへの書き込みエラー: ${err instanceof Error ? err.message : String(err)}`);
-    // 2. 次にプロジェクトルートに試みる
+    console.error(`プロジェクトルートへの書き込みエラー: ${err instanceof Error ? err.message : String(err)}`);
+    // 2. 次にホームディレクトリに試みる
     try {
-        const projectLogPath = path.resolve(__dirname, '../../claude-code-server.log');
-        fs.writeFileSync(projectLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
-        logFilePath = projectLogPath;
-        console.log(`プロジェクトルートにログファイルを作成: ${logFilePath}`);
+        const homeDir = process.env.HOME || process.env.USERPROFILE;
+        if (homeDir) {
+            const homeLogPath = path.resolve(homeDir, '.claude-code-server.log');
+            fs.writeFileSync(homeLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
+            console.log(`ホームディレクトリにログファイルを作成しました: ${homeLogPath}`);
+            logFilePath = homeLogPath;
+        }
     }
     catch (err2) {
-        console.error(`プロジェクトルートへの書き込みエラー: ${err2 instanceof Error ? err2.message : String(err2)}`);
+        console.error(`ホームディレクトリへの書き込みエラー: ${err2 instanceof Error ? err2.message : String(err2)}`);
         // 3. 最後に/tmpに試す
         try {
             const tmpPath = '/tmp/claude-code-server.log';
