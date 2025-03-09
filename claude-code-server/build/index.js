@@ -46,7 +46,7 @@ class ClaudeCodeServer {
             tools: [
                 {
                     name: 'explain_code',
-                    description: 'コードの詳細説明を提供',
+                    description: 'コードの詳細な説明を提供します。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -58,7 +58,7 @@ class ClaudeCodeServer {
                 },
                 {
                     name: 'review_code',
-                    description: 'コードのレビューを実施',
+                    description: 'コードのレビューを実施します。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -70,7 +70,7 @@ class ClaudeCodeServer {
                 },
                 {
                     name: 'fix_code',
-                    description: 'コードのバグ修正や問題解決',
+                    description: 'コードのバグ修正や問題解決を行います。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -82,7 +82,7 @@ class ClaudeCodeServer {
                 },
                 {
                     name: 'edit_code',
-                    description: 'コードの編集や機能追加',
+                    description: 'コードの編集や機能追加の指示を得ます。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -94,7 +94,7 @@ class ClaudeCodeServer {
                 },
                 {
                     name: 'test_code',
-                    description: 'コードのテスト生成',
+                    description: 'コードに対するテストを生成します。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -106,7 +106,7 @@ class ClaudeCodeServer {
                 },
                 {
                     name: 'simulate_command',
-                    description: 'コマンド実行結果予想を行います。コマンド実行を行わず、任意のコマンドをコンテキストと実行した場合、どのような結果が想定されるかを返します。実際にコマンド実行を伴わなず結果が検討できるため安全性チェックなどに使えます。',
+                    description: '指定されたコマンドの実行結果をシミュレートします。',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -211,7 +211,7 @@ class ClaudeCodeServer {
                         try {
                             const encodedCode = encodeText(truncateIfNeeded(code));
                             // ファイルを使用して大きな入力を渡す場合の代替方法
-                            const prompt = `Explain the following Base64 encoded code: \n${encodedCode}\n${context || ''}`;
+                            const prompt = `You are super professional engineer. Please kindly provide a detailed explanation of the following Base64 encoded code:\n\n${encodedCode}\n\nAdditional context (if provided):\n${context || 'No additional context provided.'}`;
                             const output = await runClaudeCommand(['--print'], prompt);
                             return { content: [{ type: 'text', text: output }] };
                         }
@@ -225,7 +225,7 @@ class ClaudeCodeServer {
                         const { code, focus_areas } = args;
                         try {
                             const encodedCode = encodeText(truncateIfNeeded(code));
-                            const prompt = `Review the following Base64 encoded code (decode it to view original): \n${encodedCode}\nFocus on: ${focus_areas || ''}`;
+                            const prompt = `You are super professional engineer. Please review the following Base64 encoded code. Consider code readability, efficiency, potential bugs, and security vulnerabilities.\n\nCode:\n${encodedCode}\n\nFocus areas (if provided):\n${focus_areas || 'No specific focus areas provided.'}`;
                             const output = await runClaudeCommand(['--print'], prompt);
                             return { content: [{ type: 'text', text: output }] };
                         }
@@ -237,14 +237,14 @@ class ClaudeCodeServer {
                     case 'fix_code': {
                         const { code, issue_description } = args;
                         const encodedCode = encodeText(truncateIfNeeded(code));
-                        const prompt = `Fix the following Base64 encoded code (decode it to view original) given the issue: ${issue_description}\n${encodedCode}`;
+                        const prompt = `You are super professional engineer. Please fix the following Base64 encoded code, addressing the issue described below:\n\nCode:\n${encodedCode}\n\nIssue description:\n${issue_description}`;
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
                     case 'edit_code': {
                         const { code, instructions } = args;
                         const encodedCode = encodeText(truncateIfNeeded(code));
-                        const prompt = `Edit the following Base64 encoded code (decode it to view original) as per instructions: ${instructions}\n${encodedCode}`;
+                        const prompt = `You are super professional engineer. Please edit the following Base64 encoded code according to the instructions provided:\n\nCode:\n${encodedCode}\n\nInstructions:\n${instructions}`;
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
@@ -252,14 +252,13 @@ class ClaudeCodeServer {
                         const { code, test_framework } = args;
                         const encodedCode = encodeText(truncateIfNeeded(code));
                         const framework = test_framework || 'default';
-                        const prompt = `Generate tests for the following Base64 encoded code (decode it to view original) using ${framework} framework:\n${encodedCode}`;
+                        const prompt = `You are super professional engineer. Please generate tests for the following Base64 encoded code.\n\nCode:\n${encodedCode}\n\nTest framework (if specified):\n${framework || 'No specific framework provided. Please use a suitable default framework.'}`;
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
                     case 'simulate_command': {
                         const { command, input } = args;
-                        // 実際にコマンドを実行する前に、コマンド実行を行った場合の結果想定を得る。
-                        const prompt = `User wants to run this command: "${command}" with input: "${input || ''}". Please explain the assumption how this command works and what it does if this command executed with this input.`;
+                        const prompt = `You are super professional engineer. Simulate the execution of the following command:\n\nCommand: ${command}\n\nInput: ${input || 'No input provided.'}\n\nDescribe the expected behavior and output, without actually executing the command.`;
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
