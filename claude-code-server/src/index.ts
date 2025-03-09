@@ -3,28 +3,98 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import child_process from 'child_process';
-
 import * as dotenv from 'dotenv';
-dotenv.config();
+import winston from 'winston';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import * as fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// ロガーのフォーマット設定を共通化
+const createLoggerFormat = () => {
+  return winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => {
+      return `[${timestamp}] [${level}] ${message}`;
+    })
+  );
+};
+
+// 初期ロガーの設定（.envの読み込み前に最小限のロガーを設定）
+const initialLogger = winston.createLogger({
+  level: 'info',
+  format: createLoggerFormat(),
+  transports: [
+    new winston.transports.Console()
+  ]
+});
+
+// .envファイルのロード試行（複数の候補パスを試す）
+const envPaths = [
+  path.resolve(__dirname, '../.env'),        // 開発環境
+  path.resolve(__dirname, '../../.env'),     // ビルド後の環境
+  path.resolve(process.cwd(), '.env')        // カレントディレクトリ
+];
+
+let envLoaded = false;
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    const result = dotenv.config({ path: envPath });
+    if (result.error) {
+      initialLogger.error(`Failed to load .env file from ${envPath}: ${result.error.message}`);
+    } else {
+      initialLogger.info(`Successfully loaded .env file from ${envPath}`);
+      envLoaded = true;
+      break;
+    }
+  }
+}
+
+// .envファイルが見つからなかった場合のユーザーフレンドリーなメッセージ
+if (!envLoaded) {
+  initialLogger.warn('.env ファイルが見つかりません。.env.example を参考に .env ファイルを作成してください。');
+  initialLogger.warn('確認したパス: ' + envPaths.join(', '));
+}
+
+// 完全なロガーの設定（.envファイルの設定を反映）
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: createLoggerFormat(),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'claude-code-server.log' })
+  ]
+});
+
+// 環境変数設定の確認をログ出力
+logger.debug('環境変数の読み込み結果:');
+logger.debug(`CLAUDE_BIN=${process.env.CLAUDE_BIN || '未設定'}`);
+logger.debug(`LOG_LEVEL=${process.env.LOG_LEVEL || 'デフォルト(info)'}`);
+
 
 // claudeコマンドのパスを環境変数 CLAUDE_BIN から取得
-const CLAUDE_BIN = process.env.CLAUDE_BIN!;
-
-// 実行前にClaude CLIの存在を確認し、バージョンも出力
-try {
-    const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
-    console.error(`Claude CLI found: ${versionOutput.trim()}`);
-}
-catch (err) {
-    console.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
-    console.error(`PATH: ${process.env.PATH}`);
-    // プログラムは続行します - ランタイムでも再チェックします
-}
+const CLAUDE_BIN = process.env.CLAUDE_BIN;
 
 if (!CLAUDE_BIN) {
-    console.error('Error: CLAUDE_BIN environment variable is not set.');
+    logger.error('Error: CLAUDE_BIN environment variable is not set.');
     process.exit(1); // または、適切なエラー処理を行う
-  }
+}
+
+// 実行前にClaude CLIの存在を確認し、バージョンも出力
+if (CLAUDE_BIN) {
+    try {
+        const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
+        logger.info(`Claude CLI found: ${versionOutput.trim()}`);
+    }
+    catch (err) {
+        logger.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
+        console.error(`PATH: ${process.env.PATH}`);
+        // プログラムは続行します - ランタイムでも再チェックします
+    }
+}
 
 // Base64 エンコード／デコード ヘルパー関数
 function encodeText(text: string): string {
@@ -54,7 +124,7 @@ class ClaudeCodeServer {
 
     this.setupToolHandlers();
 
-    this.server.onerror = (error: any) => console.error('[MCP Error]', error);
+    this.server.onerror = (error: any) => logger.error('[MCP Error]', error);
     process.on('SIGINT', async () => {
       await this.server.close();
       process.exit(0);
@@ -163,63 +233,64 @@ class ClaudeCodeServer {
           
           try {
             // より詳細なデバッグ情報
-            console.error(`Debug: Executing Claude CLI at: ${CLAUDE_BIN}`);
-            console.error(`Debug: Arguments: ${JSON.stringify(claudeArgs)}`);
-            if (stdinInput) console.error(`Debug: Input length: ${stdinInput.length} characters`);
+            logger.debug(`Executing Claude CLI at: ${CLAUDE_BIN}`);
+            logger.debug(`Arguments: ${JSON.stringify(claudeArgs)}`);
+            if (stdinInput) logger.debug(`Input length: ${stdinInput.length} characters`);
             
             // 環境変数をログに出力
-            console.error(`Debug: Environment PATH: ${process.env.PATH}`);
+            logger.debug(`Environment PATH: ${process.env.PATH}`);
             
-            const proc = child_process.spawn(CLAUDE_BIN, claudeArgs, { 
-              env: { ...process.env },
-              stdio: ['pipe', 'pipe', 'pipe'] 
-            });
-            
+            const proc = child_process.spawn(CLAUDE_BIN!, claudeArgs, {
+                env: { ...process.env },
+                stdio: ['pipe', 'pipe', 'pipe']
+            }) as child_process.ChildProcess;
+
             // 標準入力がある場合は書き込みと終了
             if (stdinInput) {
-              proc.stdin.write(stdinInput);
-              proc.stdin.end();
+                proc.stdin!.write(stdinInput);
+                proc.stdin!.end();
             }
-            
+
             let stdout = '';
             let stderr = '';
-            
-            proc.stdout.on('data', (data) => { 
-              const chunk = data.toString();
-              stdout += chunk; 
+
+            proc.stdout!.on('data', (data: string) => {
+                const chunk = data.toString();
+                stdout += chunk;
             });
-            
-            proc.stderr.on('data', (data) => { 
-              const chunk = data.toString();
-              stderr += chunk; 
-              console.error(`Claude stderr: ${chunk}`);
+
+            proc.stderr!.on('data', (data: string) => {
+                const chunk = data.toString();
+                stderr += chunk;
+                logger.error(`Claude stderr: ${chunk}`);
             });
-            
+
             // タイムアウト設定
             timeoutId = setTimeout(() => {
-              console.error("Command timed out after", timeoutMs, "ms");
-              proc.kill();
-              reject(new Error(`Command timed out after ${timeoutMs / 1000} seconds`));
+                logger.error("Command timed out after", timeoutMs, "ms");
+                proc.kill();
+                reject(new Error(`Command timed out after ${timeoutMs / 1000} seconds`));
             }, timeoutMs);
-            
-            proc.on('close', (code) => {
-              clearTimeout(timeoutId);
-              if (code === 0) {
-                resolve(stdout.trim());
-              } else {
-                console.error(`Debug: Command failed with code ${code}`);
-                console.error(`Debug: stderr: ${stderr}`);
-                reject(new Error(`Command failed with code ${code}: ${stderr}`));
-              }
+
+            proc.on('close', (code: number) => {
+                clearTimeout(timeoutId);
+                if (code === 0) {
+                    resolve(stdout.trim());
+                }
+                else {
+                    logger.error(`Debug: Command failed with code ${code}`);
+                    logger.error(`Debug: stderr: ${stderr}`);
+                    reject(new Error(`Command failed with code ${code}: ${stderr}`));
+                }
             });
-            
-            proc.on('error', (err) => {
-              clearTimeout(timeoutId);
-              console.error("Debug: Process spawn error:", err);
-              reject(err);
+
+            proc.on('error', (err: Error) => {
+                clearTimeout(timeoutId);
+                logger.error("Debug: Process spawn error:", err);
+                reject(err);
             });
           } catch (err) {
-            console.error("Failed to spawn process:", err);
+            logger.error("Failed to spawn process:", err);
             reject(err);
           }
         });
@@ -229,7 +300,7 @@ class ClaudeCodeServer {
         // 文字列の最大長さを制限する関数
         const truncateIfNeeded = (str: string, maxLength = 10000): string => {
           if (str.length > maxLength) {
-            console.error(`警告: 入力が長すぎるため切り詰めます (${str.length} -> ${maxLength})`);
+            logger.warn(`警告: 入力が長すぎるため切り詰めます (${str.length} -> ${maxLength})`);
             return str.substring(0, maxLength) + "... [truncated]";
           }
           return str;
@@ -246,7 +317,7 @@ class ClaudeCodeServer {
               const output = await runClaudeCommand(['--print'], prompt);
               return { content: [{ type: 'text', text: output }] };
             } catch (err) {
-              console.error("Error in explain_code:", err);
+              logger.error("Error in explain_code:", err);
               throw err;
             }
           }
@@ -259,21 +330,21 @@ class ClaudeCodeServer {
               const output = await runClaudeCommand(['--print'], prompt);
               return { content: [{ type: 'text', text: output }] };
             } catch (err) {
-              console.error("Error in review_code:", err);
+              logger.error("Error in review_code:", err);
               throw err;
             }
           }
           case 'fix_code': {
             const { code, issue_description } = args;
             const encodedCode = encodeText(truncateIfNeeded(code));
-            const prompt = `You are super professional engineer. Please fix the following Base64 encoded code, addressing the issue described below:\n\nCode:\n${encodedCode}\n\nIssue description:\n${issue_description}`;
+            const prompt = `You are super professional engineer. Please fix the following Base64 encoded code, addressing the issue described below:\n\nCode:\n${encodedCode}\n\nIssue description:\n${issue_description ?? 'No specific issue described.'}`;
             const output = await runClaudeCommand(['--print'], prompt);
             return { content: [{ type: 'text', text: output }] };
           }
           case 'edit_code': {
             const { code, instructions } = args;
             const encodedCode = encodeText(truncateIfNeeded(code));
-            const prompt = `You are super professional engineer. Please edit the following Base64 encoded code according to the instructions provided:\n\nCode:\n${encodedCode}\n\nInstructions:\n${instructions}`;
+            const prompt = `You are super professional engineer. Please edit the following Base64 encoded code according to the instructions provided:\n\nCode:\n${encodedCode}\n\nInstructions:\n${instructions ?? 'No specific instructions provided.'}`;
             const output = await runClaudeCommand(['--print'], prompt);
             return { content: [{ type: 'text', text: output }] };
           }
@@ -301,7 +372,7 @@ class ClaudeCodeServer {
             throw new McpError(404, "Unknown tool: " + name);
         }
       } catch (err) {
-        console.error("Error executing tool:", err);
+        logger.error("Error executing tool:", err);
         throw new McpError(500, err instanceof Error ? err.message : String(err));
       }
     });
@@ -310,7 +381,7 @@ class ClaudeCodeServer {
   async run() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error("Claude Code MCP server running on stdio");
+    logger.info("Claude Code MCP server running on stdio");
   }
 }
 

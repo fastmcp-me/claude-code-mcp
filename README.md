@@ -1,7 +1,7 @@
 # claude-code-mcp Project
 
 ## Overview
-このプロジェクトは、Claude Code MCP サーバーの構築と、それに付随するツール（explain_code、review_code、fix_code、edit_code、test_code、run_command、your_own_query）の実装を目的としています。サーバーは Node.js と MCP SDK を利用して実装され、Stdio 経由でクライアントからツールリクエストを受け取り、各ツール定義に基づいて `claude --print` コマンドを動的に生成・実行し、その結果をクライアントに返します。
+このプロジェクトは、Claude Code MCP サーバーの構築と、それに付随するツール（explain_code、review_code、fix_code、edit_code、test_code、simulate_command、your_own_query）の実装を目的としています。サーバーは Node.js と MCP SDK を利用して実装され、Stdio 経由でクライアントからツールリクエストを受け取り、各ツール定義に基づいて `claude --print` コマンドを動的に生成・実行し、その結果をクライアントに返します。
 
 今回、提案された入力処理の改善アプローチとして**Base64エンコード方式**が採択されました。これにより、クライアント側は生の自然言語テキスト（コードやREADMEなど）をそのまま送信でき、MCPサーバー内部で特殊文字（改行、ダブルクオートなど）の問題をBase64エンコード／デコードにより確実に解決します。これがシステム全体の安定性と柔軟性を向上させるキーとなります。
 
@@ -13,32 +13,7 @@
 - **結果返送:** 実行結果を JSON 形式でクライアントに返す。
 
 ## 動作シーケンスの概要 (Sequence Diagram)
-以下のシーケンス図は、各コンポーネントごとに分担された処理内容を示しています。
-
-```mermaid
-sequenceDiagram
-    participant C as クライアント
-    participant MS as MCPサーバー
-    participant B64 as Base64処理ロジック (内部)
-    participant CP as Exec (child_process.exec)
-    participant CC as Claude Codeプロセス
-
-    C->>MS: 生テキストを含むリクエスト送信 (JSON形式)
-    note right of MS: 受信後、入力テキストをBase64エンコード／デコード処理
-    MS->>B64: 入力テキストのBase64エンコード（内部）
-    B64-->>MS: エンコード済みテキスト取得
-    note right of MS: 必要に応じてBase64デコードし元テキストを復元
-    alt 固定テンプレートツールの場合
-        MS->>MS: 復元したテキストを固定プレフィックスで整形し\nコマンド文字列生成
-    else 自由なクエリ (your_own_query) の場合
-        MS->>MS: {query} と {context} をそのまま利用して\nコマンド文字列生成
-    end
-    MS->>CP: child_process.exec() でコマンド実行
-    CP-->>CC: コマンド送信
-    CC-->>CP: コマンド実行結果（標準出力）
-    CP-->>MS: 実行結果取得
-    MS->>C: 結果を JSON 形式で返送
-```
+TODO: 修正
 
 ## MCP Server Input Handling Strategy
 本セクションでは、現状の入力処理の状態と、提案されたアプローチの詳細、及び各案の比較マトリックスについて説明します。
@@ -87,4 +62,13 @@ sequenceDiagram
     }
   }
 }
-``>
+```
+
+## Environment Variables
+
+This server uses the following environment variables:
+
+- `CLAUDE_BIN`:  Claude CLI 実行ファイルへのパスを指定します。(必須)
+- `LOG_LEVEL`:  ログレベルを指定します。(オプション、デフォルトは `info`)
+
+これらの変数を設定するために、`claude-code-server` ディレクトリに `.env` ファイルを作成する必要があります。`.env.example` をテンプレートとして利用してください。
