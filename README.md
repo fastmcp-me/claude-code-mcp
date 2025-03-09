@@ -83,5 +83,5 @@ The `claude-code-server` provides the following tools:
 
 ## Note
 
-- Log rotation is not implemented yet.
+- Log rotation is not implemented yet. (be careful on the size of .log)
 - Only tested with Cline / Ubuntu / WSL2.
