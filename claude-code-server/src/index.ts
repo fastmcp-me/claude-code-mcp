@@ -47,20 +47,25 @@ for (const envPath of envPaths) {
       initialLogger.error(`Failed to load .env file from ${envPath}: ${result.error.message}`);
     } else {
       initialLogger.info(`Successfully loaded .env file from ${envPath}`);
+      initialLogger.debug(`Loaded environment variables: LOG_LEVEL=${process.env.LOG_LEVEL}, CLAUDE_BIN=${process.env.CLAUDE_BIN}`);
       envLoaded = true;
       break;
     }
+  } else {
+    initialLogger.debug(`Environment file not found at path: ${envPath}`);
   }
 }
 
 // .envファイルが見つからなかった場合のユーザーフレンドリーなメッセージ
 if (!envLoaded) {
-  initialLogger.warn('.env ファイルが見つかりません。.env.example を参考に .env ファイルを作成してください。');
-  initialLogger.warn('確認したパス: ' + envPaths.join(', '));
+  initialLogger.warn('No .env file found. Please create one based on .env.example.');
+  initialLogger.warn('Checked paths: ' + envPaths.join(', '));
+  initialLogger.debug('Running with default environment settings');
 }
 
 // ログレベルの明示的な確認（デバッグ用）
-console.log(`環境変数LOG_LEVEL: ${process.env.LOG_LEVEL}`);
+console.log(`Environment variable LOG_LEVEL: ${process.env.LOG_LEVEL}`);
+initialLogger.debug(`Current initial logger level: ${initialLogger.level}`);
 
 // ログファイルパスを決定するシンプルな方法
 let logFilePath: string | null = null;
@@ -68,53 +73,50 @@ let logFilePath: string | null = null;
 // 1. まずプロジェクトルートに書き込みを試みる
 try {
   const projectLogPath = path.resolve(__dirname, '../../claude-code-server.log');
+  initialLogger.debug(`Attempting to write to project root log: ${projectLogPath}`);
   fs.writeFileSync(projectLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
   logFilePath = projectLogPath;
-  console.log(`プロジェクトルートにログファイルを作成: ${logFilePath}`);
+  console.log(`Created log file in project root: ${logFilePath}`);
+  initialLogger.debug(`Successfully created/accessed log file at: ${logFilePath}`);
 } catch (err) {
-  console.error(`プロジェクトルートへの書き込みエラー: ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`Error writing to project root: ${err instanceof Error ? err.message : String(err)}`);
+  initialLogger.debug(`Failed to write to project root log with error: ${err instanceof Error ? err.stack : String(err)}`);
   
   // 2. 次にホームディレクトリに試みる
   try {
     const homeDir = process.env.HOME || process.env.USERPROFILE;
     if (homeDir) {
       const homeLogPath = path.resolve(homeDir, '.claude-code-server.log');
+      initialLogger.debug(`Attempting to write to home directory log: ${homeLogPath}`);
       fs.writeFileSync(homeLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
-      console.log(`ホームディレクトリにログファイルを作成しました: ${homeLogPath}`);
+      console.log(`Created log file in home directory: ${homeLogPath}`);
       logFilePath = homeLogPath;
+      initialLogger.debug(`Successfully created/accessed log file at: ${logFilePath}`);
     }
   } catch (err2) {
-    console.error(`ホームディレクトリへの書き込みエラー: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    console.error(`Error writing to home directory: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    initialLogger.debug(`Failed to write to home directory log with error: ${err2 instanceof Error ? err2.stack : String(err2)}`);
     
     // 3. 最後に/tmpに試す
     try {
       const tmpPath = '/tmp/claude-code-server.log';
+      initialLogger.debug(`Attempting to write to temp directory log: ${tmpPath}`);
       fs.writeFileSync(tmpPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
       logFilePath = tmpPath;
-      console.log(`一時ディレクトリにログファイルを作成: ${logFilePath}`);
+      console.log(`Created log file in temp directory: ${logFilePath}`);
+      initialLogger.debug(`Successfully created/accessed log file at: ${logFilePath}`);
     } catch (err3) {
-      console.error('すべてのログファイルパスが失敗しました。ログはコンソールのみになります。');
+      console.error('All log file paths failed. Logs will be console-only.');
+      initialLogger.debug(`Failed to write to temp directory log with error: ${err3 instanceof Error ? err3.stack : String(err3)}`);
       logFilePath = null;
     }
   }
 }
 
-// ファイル情報の診断
-if (logFilePath) {
-  try {
-    const stats = fs.statSync(logFilePath);
-    console.log('ファイル情報:');
-    console.log(` - サイズ: ${stats.size} バイト`);
-    console.log(` - パーミッション: ${(stats.mode & 0o777).toString(8)}`);
-    console.log(` - UID/GID: ${stats.uid}/${stats.gid}`);
-  } catch (err) {
-    console.error('ファイル情報取得エラー:', err);
-  }
-}
-
 // 環境変数からログレベルを確実に取得
 const logLevel = process.env.LOG_LEVEL || 'info';
-console.log(`設定するログレベル: ${logLevel}`);
+console.log(`Setting log level to: ${logLevel}`);
+initialLogger.debug(`Configured log level from environment: ${logLevel}`);
 
 // Winstonロガーの設定
 const logger = winston.createLogger({
@@ -132,6 +134,8 @@ const logger = winston.createLogger({
   ]
 });
 
+logger.debug('Winston logger created with console transport');
+
 // ファイルトランスポートの追加
 if (logFilePath) {
   try {
@@ -145,71 +149,76 @@ if (logFilePath) {
     
     // ファイルトランスポート追加
     logger.add(fileTransport);
-    console.log(`ログファイルを追加しました: ${logFilePath}`);
-    console.log(`ファイルログレベル: ${logLevel}`);
+    console.log(`Added log file: ${logFilePath}`);
+    logger.debug(`File transport added to logger with level: ${logLevel}`);
     
-    // テストログ
-    logger.silly('これはsillyレベルのログです');
-    logger.debug('これはdebugレベルのログです - デバッグログが機能していればログに記録されます');
-    logger.verbose('これはverboseレベルのログです');
-    logger.info('これはinfoレベルのログです');
-    logger.warn('これはwarnレベルのログです');
-    logger.error('これはerrorレベルのログです');
-    
-    // 同期書き込みテスト
-    fs.appendFileSync(logFilePath, `# 同期書き込みテスト - ログレベル: ${logLevel} - ${new Date().toISOString()}\n`);
+    // 同期書き込みテスト - シンプルな起動メッセージのみに置き換え
+    fs.appendFileSync(logFilePath, `# System startup - ${new Date().toISOString()}\n`);
+    logger.debug(`Wrote startup marker to log file`);
   } catch (err) {
-    console.error('ファイルトランスポート設定エラー:', err);
+    console.error('File transport setup error:', err);
+    logger.debug(`Failed to setup file transport: ${err instanceof Error ? err.stack : String(err)}`);
   }
 }
 
-// 起動時にテストログを書き込み - 同期的にも書き込み
-logger.info('=== Claude Code Server 起動 ===');
-if (logFilePath) {
+// 起動時にシンプルなログを書き込み
+logger.info('=== Claude Code Server started ===');
+logger.debug('Server initialization sequence started');
+
+// ファイル情報の診断 - デバッグモードでのみ詳細表示
+if (logFilePath && logLevel === 'debug') {
   try {
-    // 同期的にも書き込み
-    fs.appendFileSync(logFilePath, `[INFO] 起動確認: ${new Date().toISOString()}\n`);
+    const stats = fs.statSync(logFilePath);
+    logger.debug(`Log file information (${logFilePath}): size=${stats.size} bytes, mode=${stats.mode.toString(8)}, uid=${stats.uid}, gid=${stats.gid}`);
   } catch (err) {
-    console.error(`ログファイル書き込みエラー: ${err}`);
+    logger.error('Failed to get file information:', err);
   }
 }
 
 // ログフラッシュ関数をシンプル化
 const flushLog = () => {
-  console.log('ログをフラッシュしています...');
+  logger.debug('Flushing logs to disk');
   
   if (logFilePath) {
     try {
       // 同期的に書き込み
-      fs.appendFileSync(logFilePath, `\n# プロセス終了: ${new Date().toISOString()}\n`);
-      console.log('✓ 終了メッセージを書き込みました');
+      fs.appendFileSync(logFilePath, `\n# Process terminated: ${new Date().toISOString()}\n`);
+      logger.debug('Wrote termination marker to log file');
     } catch (appendErr) {
-      console.error('終了時のログ書き込みエラー:', appendErr);
+      console.error('Error writing log on termination:', appendErr);
+      logger.debug(`Failed to write termination marker: ${appendErr instanceof Error ? appendErr.stack : String(appendErr)}`);
     }
   }
   
   try {
     // Winstonのクローズを試みる（エラーを無視）
+    logger.debug('Closing Winston logger');
     logger.close();
   } catch (err) {
     // 無視
+    logger.debug(`Error while closing logger: ${err instanceof Error ? err.message : String(err)}`);
   }
 };
 
 // プロセス終了時にログを確実にフラッシュ
-process.on('exit', flushLog);
+process.on('exit', () => {
+  logger.debug('Process exit event detected');
+  flushLog();
+});
 
 // SIGINT (Ctrl+C) 処理
 process.on('SIGINT', () => {
-  logger.info('SIGINT受信。終了します。');
+  logger.info('Received SIGINT. Shutting down.');
+  logger.debug('SIGINT handler triggered');
   flushLog();
   process.exit(0);
 });
 
 // 未処理の例外をキャッチ
 process.on('uncaughtException', (err) => {
-  logger.error(`未処理の例外: ${err.message}`);
+  logger.error(`Uncaught exception: ${err.message}`);
   logger.error(err.stack);
+  logger.debug('Uncaught exception handler triggered');
   flushLog();
   process.exit(1);
 });
@@ -219,18 +228,22 @@ const CLAUDE_BIN = process.env.CLAUDE_BIN;
 
 if (!CLAUDE_BIN) {
     logger.error('Error: CLAUDE_BIN environment variable is not set.');
-    process.exit(1); // または、適切なエラー処理を行う
+    logger.debug('Missing required CLAUDE_BIN environment variable, exiting');
+    process.exit(1);
 }
 
 // 実行前にClaude CLIの存在を確認し、バージョンも出力
 if (CLAUDE_BIN) {
     try {
+        logger.debug(`Checking Claude CLI at path: ${CLAUDE_BIN}`);
         const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
         logger.info(`Claude CLI found: ${versionOutput.trim()}`);
+        logger.debug(`Claude CLI version details: ${versionOutput.trim()}`);
     }
     catch (err) {
-        logger.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
-        console.error(`PATH: ${process.env.PATH}`);
+        logger.error(`Warning: Unable to execute Claude CLI (${CLAUDE_BIN}). Error details:`, err);
+        logger.debug(`PATH environment: ${process.env.PATH}`);
+        logger.debug(`Failed to execute Claude CLI: ${err instanceof Error ? err.stack : String(err)}`);
         // プログラムは続行します - ランタイムでも再チェックします
     }
 }
@@ -248,6 +261,7 @@ class ClaudeCodeServer {
   private server: Server;
 
   constructor() {
+    logger.debug('Initializing Claude Code Server');
     this.server = new Server(
       {
         name: 'claude-code-server',
@@ -261,109 +275,124 @@ class ClaudeCodeServer {
       }
     );
 
+    logger.debug('Setting up tool handlers');
     this.setupToolHandlers();
 
-    this.server.onerror = (error: any) => logger.error('[MCP Error]', error);
+    this.server.onerror = (error: any) => {
+      logger.error('[MCP Error]', error);
+      logger.debug(`MCP server error details: ${error instanceof Error ? error.stack : JSON.stringify(error)}`);
+    };
+    
     process.on('SIGINT', async () => {
+      logger.debug('SIGINT received in server handler');
       await this.server.close();
       process.exit(0);
     });
+    
+    logger.debug('Claude Code Server initialization completed');
   }
 
   private setupToolHandlers() {
     // ツールリストの設定
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
-        {
-          name: 'explain_code',
-          description: 'コードの詳細な説明を提供します。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: '対象コード' },
-              context: { type: 'string', description: '追加コンテキスト', default: '' }
-            },
-            required: ['code']
+    logger.debug('Registering ListTools request handler');
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      logger.debug('ListTools handler called');
+      return {
+        tools: [
+          {
+            name: 'explain_code',
+            description: 'Provides detailed explanation of the given code.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'Target code' },
+                context: { type: 'string', description: 'Additional context', default: '' }
+              },
+              required: ['code']
+            }
+          },
+          {
+            name: 'review_code',
+            description: 'Reviews the given code.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'Code to review' },
+                focus_areas: { type: 'string', description: 'Areas to focus on', default: '' }
+              },
+              required: ['code']
+            }
+          },
+          {
+            name: 'fix_code',
+            description: 'Fixes bugs or issues in the given code.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'Code to fix' },
+                issue_description: { type: 'string', description: 'Description of the issue' }
+              },
+              required: ['code', 'issue_description']
+            }
+          },
+          {
+            name: 'edit_code',
+            description: 'Edits the given code based on instructions.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'Code to edit' },
+                instructions: { type: 'string', description: 'Editing instructions' }
+              },
+              required: ['code', 'instructions']
+            }
+          },
+          {
+            name: 'test_code',
+            description: 'Generates tests for the given code.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string', description: 'Code to test' },
+                test_framework: { type: 'string', description: 'Test framework to use', default: '' }
+              },
+              required: ['code']
+            }
+          },
+          {
+            name: 'simulate_command',
+            description: 'Simulates the execution of a given command.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                command: { type: 'string', description: 'Command to execute' },
+                input: { type: 'string', description: 'Input data', default: '' }
+              },
+              required: ['command']
+            }
+          },
+          {
+            name: 'your_own_query',
+            description: 'Sends a custom query with context.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string', description: 'Query text' },
+                context: { type: 'string', description: 'Additional context', default: '' }
+              },
+              required: ['query']
+            }
           }
-        },
-        {
-          name: 'review_code',
-          description: 'コードのレビューを実施します。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: 'レビュー対象コード' },
-              focus_areas: { type: 'string', description: '重点的に見るべき領域', default: '' }
-            },
-            required: ['code']
-          }
-        },
-        {
-          name: 'fix_code',
-          description: 'コードのバグ修正や問題解決を行います。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: '修正対象コード' },
-              issue_description: { type: 'string', description: '問題の説明' }
-            },
-            required: ['code', 'issue_description']
-          }
-        },
-        {
-          name: 'edit_code',
-          description: 'コードの編集や機能追加の指示を得ます。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: '編集対象コード' },
-              instructions: { type: 'string', description: '編集指示' }
-            },
-            required: ['code', 'instructions']
-          }
-        },
-        {
-          name: 'test_code',
-          description: 'コードに対するテストを生成します。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: 'テスト対象コード' },
-              test_framework: { type: 'string', description: '使用するテストフレームワーク', default: '' }
-            },
-            required: ['code']
-          }
-        },
-        {
-          name: 'simulate_command',
-          description: '指定されたコマンドの実行結果をシミュレートします。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              command: { type: 'string', description: '実行するコマンド' },
-              input: { type: 'string', description: '入力データ', default: '' }
-            },
-            required: ['command']
-          }
-        },
-        {
-          name: 'your_own_query',
-          description: '自由な問い合わせを送信するツール。Hostが独自の問い合わせ文とコンテキストを渡します。',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: '問い合わせ文' },
-              context: { type: 'string', description: '追加コンテキスト', default: '' }
-            },
-            required: ['query']
-          }
-        }
-      ]
-    }));
+        ]
+      };
+    });
 
     // ツール実行リクエスト処理
+    logger.debug('Registering CallTool request handler');
     this.server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       const { name, arguments: args } = request.params;
+      logger.debug(`CallTool handler called for tool: ${name} with args: ${JSON.stringify(args, null, 2)}`);
+      
       const runClaudeCommand = (claudeArgs: string[], stdinInput?: string): Promise<string> => {
         return new Promise((resolve, reject) => {
           // タイムアウト設定 (5分)
@@ -372,8 +401,8 @@ class ClaudeCodeServer {
           
           try {
             // より詳細なデバッグ情報
-            logger.debug(`Executing Claude CLI at: ${CLAUDE_BIN}`);
-            logger.debug(`Arguments: ${JSON.stringify(claudeArgs)}`);
+            logger.debug(`Executing Claude CLI at path: ${CLAUDE_BIN}`);
+            logger.debug(`Claude CLI arguments: ${JSON.stringify(claudeArgs)}`);
             if (stdinInput) logger.debug(`Input length: ${stdinInput.length} characters`);
             
             // 環境変数をログに出力
@@ -388,6 +417,7 @@ class ClaudeCodeServer {
             if (stdinInput) {
                 proc.stdin!.write(stdinInput);
                 proc.stdin!.end();
+                logger.debug('Wrote input to Claude CLI stdin');
             }
 
             let stdout = '';
@@ -396,40 +426,47 @@ class ClaudeCodeServer {
             proc.stdout!.on('data', (data: string) => {
                 const chunk = data.toString();
                 stdout += chunk;
+                logger.debug(`Received stdout chunk: ${chunk.length} bytes`);
             });
 
             proc.stderr!.on('data', (data: string) => {
                 const chunk = data.toString();
                 stderr += chunk;
                 logger.error(`Claude stderr: ${chunk}`);
+                logger.debug(`Claude stderr output: ${chunk}`);
             });
 
             // タイムアウト設定
             timeoutId = setTimeout(() => {
-                logger.error("Command timed out after", timeoutMs, "ms");
+                logger.error(`Command timed out after ${timeoutMs/1000} seconds`);
+                logger.debug('Killing process due to timeout');
                 proc.kill();
                 reject(new Error(`Command timed out after ${timeoutMs / 1000} seconds`));
             }, timeoutMs);
 
             proc.on('close', (code: number) => {
                 clearTimeout(timeoutId);
+                logger.debug(`Claude process closed with code: ${code}`);
                 if (code === 0) {
+                    logger.debug(`Claude command completed successfully, output length: ${stdout.length} bytes`);
                     resolve(stdout.trim());
                 }
                 else {
-                    logger.error(`Debug: Command failed with code ${code}`);
-                    logger.error(`Debug: stderr: ${stderr}`);
+                    logger.error(`Command failed with code ${code}`);
+                    logger.debug(`stderr: ${stderr}`);
                     reject(new Error(`Command failed with code ${code}: ${stderr}`));
                 }
             });
 
             proc.on('error', (err: Error) => {
                 clearTimeout(timeoutId);
-                logger.error("Debug: Process spawn error:", err);
+                logger.error("Process spawn error:", err);
+                logger.debug(`Process error details: ${err.stack}`);
                 reject(err);
             });
           } catch (err) {
             logger.error("Failed to spawn process:", err);
+            logger.debug(`Spawn failure details: ${err instanceof Error ? err.stack : String(err)}`);
             reject(err);
           }
         });
@@ -439,7 +476,7 @@ class ClaudeCodeServer {
         // 文字列の最大長さを制限する関数
         const truncateIfNeeded = (str: string, maxLength = 10000): string => {
           if (str.length > maxLength) {
-            logger.warn(`警告: 入力が長すぎるため切り詰めます (${str.length} -> ${maxLength})`);
+            logger.warn(`Warning: Input too long, truncating (${str.length} -> ${maxLength})`);
             return str.substring(0, maxLength) + "... [truncated]";
           }
           return str;
@@ -450,61 +487,88 @@ class ClaudeCodeServer {
           case 'explain_code': {
             const { code, context } = args;
             try {
+              logger.debug(`Processing explain_code request, code length: ${code.length}`);
               const encodedCode = encodeText(truncateIfNeeded(code));
+              logger.debug(`Code encoded to base64, length: ${encodedCode.length}`);
               // ファイルを使用して大きな入力を渡す場合の代替方法
               const prompt = `You are super professional engineer. Please kindly provide a detailed explanation of the following Base64 encoded code:\n\n${encodedCode}\n\nAdditional context (if provided):\n${context || 'No additional context provided.'}`;
+              logger.debug('Calling Claude CLI with prompt');
               const output = await runClaudeCommand(['--print'], prompt);
+              logger.debug(`Received response from Claude, length: ${output.length}`);
               return { content: [{ type: 'text', text: output }] };
             } catch (err) {
               logger.error("Error in explain_code:", err);
+              logger.debug(`explain_code error details: ${err instanceof Error ? err.stack : String(err)}`);
               throw err;
             }
           }
-          // 他のケースも同様にファイル入力を使用するように変更
           case 'review_code': {
             const { code, focus_areas } = args;
             try {
+              logger.debug(`Processing review_code request, code length: ${code.length}`);
               const encodedCode = encodeText(truncateIfNeeded(code));
+              logger.debug(`Code encoded to base64, length: ${encodedCode.length}`);
               const prompt = `You are super professional engineer. Please review the following Base64 encoded code. Consider code readability, efficiency, potential bugs, and security vulnerabilities.\n\nCode:\n${encodedCode}\n\nFocus areas (if provided):\n${focus_areas || 'No specific focus areas provided.'}`;
+              logger.debug('Calling Claude CLI with prompt');
               const output = await runClaudeCommand(['--print'], prompt);
+              logger.debug(`Received response from Claude, length: ${output.length}`);
               return { content: [{ type: 'text', text: output }] };
             } catch (err) {
               logger.error("Error in review_code:", err);
+              logger.debug(`review_code error details: ${err instanceof Error ? err.stack : String(err)}`);
               throw err;
             }
           }
           case 'fix_code': {
             const { code, issue_description } = args;
+            logger.debug(`Processing fix_code request, code length: ${code.length}`);
             const encodedCode = encodeText(truncateIfNeeded(code));
+            logger.debug(`Code encoded to base64, length: ${encodedCode.length}`);
             const prompt = `You are super professional engineer. Please fix the following Base64 encoded code, addressing the issue described below:\n\nCode:\n${encodedCode}\n\nIssue description:\n${issue_description ?? 'No specific issue described.'}`;
+            logger.debug('Calling Claude CLI with prompt');
             const output = await runClaudeCommand(['--print'], prompt);
+            logger.debug(`Received response from Claude, length: ${output.length}`);
             return { content: [{ type: 'text', text: output }] };
           }
           case 'edit_code': {
             const { code, instructions } = args;
+            logger.debug(`Processing edit_code request, code length: ${code.length}`);
             const encodedCode = encodeText(truncateIfNeeded(code));
+            logger.debug(`Code encoded to base64, length: ${encodedCode.length}`);
             const prompt = `You are super professional engineer. Please edit the following Base64 encoded code according to the instructions provided:\n\nCode:\n${encodedCode}\n\nInstructions:\n${instructions ?? 'No specific instructions provided.'}`;
+            logger.debug('Calling Claude CLI with prompt');
             const output = await runClaudeCommand(['--print'], prompt);
+            logger.debug(`Received response from Claude, length: ${output.length}`);
             return { content: [{ type: 'text', text: output }] };
           }
           case 'test_code': {
             const { code, test_framework } = args;
+            logger.debug(`Processing test_code request, code length: ${code.length}`);
             const encodedCode = encodeText(truncateIfNeeded(code));
+            logger.debug(`Code encoded to base64, length: ${encodedCode.length}`);
             const framework = test_framework || 'default';
             const prompt = `You are super professional engineer. Please generate tests for the following Base64 encoded code.\n\nCode:\n${encodedCode}\n\nTest framework (if specified):\n${framework || 'No specific framework provided. Please use a suitable default framework.'}`;
+            logger.debug('Calling Claude CLI with prompt');
             const output = await runClaudeCommand(['--print'], prompt);
+            logger.debug(`Received response from Claude, length: ${output.length}`);
             return { content: [{ type: 'text', text: output }] };
           }
           case 'simulate_command': {
             const { command, input } = args;
+            logger.debug(`Processing simulate_command request, command: ${command}`);
             const prompt = `You are super professional engineer. Simulate the execution of the following command:\n\nCommand: ${command}\n\nInput: ${input || 'No input provided.'}\n\nDescribe the expected behavior and output, without actually executing the command.`;
+            logger.debug('Calling Claude CLI with prompt');
             const output = await runClaudeCommand(['--print'], prompt);
+            logger.debug(`Received response from Claude, length: ${output.length}`);
             return { content: [{ type: 'text', text: output }] };
           }
           case 'your_own_query': {
             const { query, context } = args;
+            logger.debug(`Processing your_own_query request, query length: ${query.length}`);
             const prompt = `Query: ${query} ${context || ''}`;
+            logger.debug('Calling Claude CLI with prompt');
             const output = await runClaudeCommand(['--print'], prompt);
+            logger.debug(`Received response from Claude, length: ${output.length}`);
             return { content: [{ type: 'text', text: output }] };
           }
           default:
@@ -512,17 +576,25 @@ class ClaudeCodeServer {
         }
       } catch (err) {
         logger.error("Error executing tool:", err);
+        logger.debug(`Tool execution error details: ${err instanceof Error ? err.stack : String(err)}`);
         throw new McpError(500, err instanceof Error ? err.message : String(err));
       }
     });
   }
 
   async run() {
+    logger.debug('Starting Claude Code MCP server');
     const transport = new StdioServerTransport();
+    logger.debug('Created StdioServerTransport');
     await this.server.connect(transport);
     logger.info("Claude Code MCP server running on stdio");
+    logger.debug('Server connected to transport and ready to process requests');
   }
 }
 
 const server = new ClaudeCodeServer();
-server.run().catch(console.error);
+server.run().catch((err) => {
+  logger.error('Failed to start server:', err);
+  logger.debug(`Server start failure details: ${err instanceof Error ? err.stack : String(err)}`);
+  console.error(err);
+});
