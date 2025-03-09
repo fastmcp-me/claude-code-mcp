@@ -105,7 +105,7 @@ class ClaudeCodeServer {
                     }
                 },
                 {
-                    name: 'run_command',
+                    name: 'simulate_command',
                     description: 'コマンド実行結果予想を行います。コマンド実行を行わず、任意のコマンドをコンテキストと実行した場合、どのような結果が想定されるかを返します。実際にコマンド実行を伴わなず結果が検討できるため安全性チェックなどに使えます。',
                     inputSchema: {
                         type: 'object',
@@ -256,10 +256,10 @@ class ClaudeCodeServer {
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
-                    case 'run_command': {
+                    case 'simulate_command': {
                         const { command, input } = args;
-                        // 直接ユーザーコマンドを実行する代わりに、Claudeに実行方法を尋ねる
-                        const prompt = `User wants to run this command: "${command}" with input: "${input || ''}". Please explain the assumption how this command works and what it does if this command executed with this input.`;
+                        // 実際にコマンドを実行する前に、コマンド実行を行った場合の結果想定を得る。
+                        const prompt = `User wants to run this command: "${command}" with input: "${input || ''}". Please explain how this command works and what it does.`;
                         const output = await runClaudeCommand(['--print'], prompt);
                         return { content: [{ type: 'text', text: output }] };
                     }
