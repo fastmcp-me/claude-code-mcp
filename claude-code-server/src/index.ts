@@ -62,33 +62,157 @@ if (!envLoaded) {
 // ログレベルの明示的な確認（デバッグ用）
 console.log(`環境変数LOG_LEVEL: ${process.env.LOG_LEVEL}`);
 
-// ロガー設定の修正
+// ログファイルパスを決定するシンプルな方法
+let logFilePath: string | null = null;
+
+// 1. まずホームディレクトリに直接書き込みを試みる（これが成功するようです）
+try {
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir) {
+    const homeLogPath = path.resolve(homeDir, '.claude-code-server.log');
+    fs.writeFileSync(homeLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
+    console.log(`ホームディレクトリにログファイルを作成しました: ${homeLogPath}`);
+    logFilePath = homeLogPath;
+  }
+} catch (err) {
+  console.error(`ホームディレクトリへの書き込みエラー: ${err instanceof Error ? err.message : String(err)}`);
+  
+  // 2. 次にプロジェクトルートに試みる
+  try {
+    const projectLogPath = path.resolve(__dirname, '../../claude-code-server.log');
+    fs.writeFileSync(projectLogPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
+    logFilePath = projectLogPath;
+    console.log(`プロジェクトルートにログファイルを作成: ${logFilePath}`);
+  } catch (err2) {
+    console.error(`プロジェクトルートへの書き込みエラー: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    
+    // 3. 最後に/tmpに試す
+    try {
+      const tmpPath = '/tmp/claude-code-server.log';
+      fs.writeFileSync(tmpPath, `# Log file initialization at ${new Date().toISOString()}\n`, { flag: 'a' });
+      logFilePath = tmpPath;
+      console.log(`一時ディレクトリにログファイルを作成: ${logFilePath}`);
+    } catch (err3) {
+      console.error('すべてのログファイルパスが失敗しました。ログはコンソールのみになります。');
+      logFilePath = null;
+    }
+  }
+}
+
+// ファイル情報の診断
+if (logFilePath) {
+  try {
+    const stats = fs.statSync(logFilePath);
+    console.log('ファイル情報:');
+    console.log(` - サイズ: ${stats.size} バイト`);
+    console.log(` - パーミッション: ${(stats.mode & 0o777).toString(8)}`);
+    console.log(` - UID/GID: ${stats.uid}/${stats.gid}`);
+  } catch (err) {
+    console.error('ファイル情報取得エラー:', err);
+  }
+}
+
+// 環境変数からログレベルを確実に取得
+const logLevel = process.env.LOG_LEVEL || 'info';
+console.log(`設定するログレベル: ${logLevel}`);
+
+// Winstonロガーの設定
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: createLoggerFormat(),
-  transports: [
-    new winston.transports.Console({
-      level: process.env.LOG_LEVEL || 'info',  // 明示的に指定
-    }),
-    new winston.transports.File({
-      filename: path.resolve(__dirname, '../../claude-code-server.log'),
-      level: process.env.LOG_LEVEL || 'info'   // 明示的に指定
+  // 環境変数からログレベルを設定
+  level: logLevel,
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => {
+      return `[${timestamp}] [${level}] ${message}`;
     })
+  ),
+  transports: [
+    // コンソールトランスポートもログレベル設定を継承
+    new winston.transports.Console({ level: logLevel })
   ]
 });
 
-// ロガーが正しく設定されているか確認
-logger.error('エラーログテスト');
-logger.warn('警告ログテスト');
-logger.info('情報ログテスト');
-logger.debug('デバッグログテスト - これがログに出力されれば LOG_LEVEL=debug が機能しています');
+// ファイルトランスポートの追加
+if (logFilePath) {
+  try {
+    // ファイルトランスポートを作成
+    const fileTransport = new winston.transports.File({
+      filename: logFilePath,
+      // 明示的にログレベルを設定
+      level: logLevel,
+      options: { flags: 'a' }
+    });
+    
+    // ファイルトランスポート追加
+    logger.add(fileTransport);
+    console.log(`ログファイルを追加しました: ${logFilePath}`);
+    console.log(`ファイルログレベル: ${logLevel}`);
+    
+    // テストログ
+    logger.silly('これはsillyレベルのログです');
+    logger.debug('これはdebugレベルのログです - デバッグログが機能していればログに記録されます');
+    logger.verbose('これはverboseレベルのログです');
+    logger.info('これはinfoレベルのログです');
+    logger.warn('これはwarnレベルのログです');
+    logger.error('これはerrorレベルのログです');
+    
+    // 同期書き込みテスト
+    fs.appendFileSync(logFilePath, `# 同期書き込みテスト - ログレベル: ${logLevel} - ${new Date().toISOString()}\n`);
+  } catch (err) {
+    console.error('ファイルトランスポート設定エラー:', err);
+  }
+}
 
-// 環境変数設定の確認をログ出力
-logger.debug('環境変数の読み込み結果:');
-logger.debug(`CLAUDE_BIN=${process.env.CLAUDE_BIN || '未設定'}`);
-logger.debug(`LOG_LEVEL=${process.env.LOG_LEVEL || 'デフォルト(info)'}`);
-logger.info(`LOG_LEVEL=${process.env.LOG_LEVEL || 'デフォルト(info)'}`);
+// 起動時にテストログを書き込み - 同期的にも書き込み
+logger.info('=== Claude Code Server 起動 ===');
+if (logFilePath) {
+  try {
+    // 同期的にも書き込み
+    fs.appendFileSync(logFilePath, `[INFO] 起動確認: ${new Date().toISOString()}\n`);
+  } catch (err) {
+    console.error(`ログファイル書き込みエラー: ${err}`);
+  }
+}
 
+// ログフラッシュ関数をシンプル化
+const flushLog = () => {
+  console.log('ログをフラッシュしています...');
+  
+  if (logFilePath) {
+    try {
+      // 同期的に書き込み
+      fs.appendFileSync(logFilePath, `\n# プロセス終了: ${new Date().toISOString()}\n`);
+      console.log('✓ 終了メッセージを書き込みました');
+    } catch (appendErr) {
+      console.error('終了時のログ書き込みエラー:', appendErr);
+    }
+  }
+  
+  try {
+    // Winstonのクローズを試みる（エラーを無視）
+    logger.close();
+  } catch (err) {
+    // 無視
+  }
+};
+
+// プロセス終了時にログを確実にフラッシュ
+process.on('exit', flushLog);
+
+// SIGINT (Ctrl+C) 処理
+process.on('SIGINT', () => {
+  logger.info('SIGINT受信。終了します。');
+  flushLog();
+  process.exit(0);
+});
+
+// 未処理の例外をキャッチ
+process.on('uncaughtException', (err) => {
+  logger.error(`未処理の例外: ${err.message}`);
+  logger.error(err.stack);
+  flushLog();
+  process.exit(1);
+});
 
 // claudeコマンドのパスを環境変数 CLAUDE_BIN から取得
 const CLAUDE_BIN = process.env.CLAUDE_BIN;
