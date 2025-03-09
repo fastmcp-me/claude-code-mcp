@@ -4,26 +4,35 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import child_process from 'child_process';
 
-// claudeコマンドのパスを環境変数 CLAUDE_BIN から取得（未設定の場合は絶対パスを使用）
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "/home/linuxbrew/.linuxbrew/bin/claude";
+import * as dotenv from 'dotenv';
+dotenv.config();
+
+// claudeコマンドのパスを環境変数 CLAUDE_BIN から取得
+const CLAUDE_BIN = process.env.CLAUDE_BIN!;
 
 // 実行前にClaude CLIの存在を確認し、バージョンも出力
 try {
-  const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
-  console.error(`Claude CLI found: ${versionOutput.trim()}`);
-} catch (err) {
-  console.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
-  console.error(`PATH: ${process.env.PATH}`);
-  // プログラムは続行します - ランタイムでも再チェックします
+    const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
+    console.error(`Claude CLI found: ${versionOutput.trim()}`);
 }
+catch (err) {
+    console.error(`警告: Claude CLI (${CLAUDE_BIN}) が実行できません。詳細エラー:`, err);
+    console.error(`PATH: ${process.env.PATH}`);
+    // プログラムは続行します - ランタイムでも再チェックします
+}
+
+if (!CLAUDE_BIN) {
+    console.error('Error: CLAUDE_BIN environment variable is not set.');
+    process.exit(1); // または、適切なエラー処理を行う
+  }
 
 // Base64 エンコード／デコード ヘルパー関数
 function encodeText(text: string): string {
-  return Buffer.from(text, 'utf8').toString('base64');
+    return Buffer.from(text, 'utf8').toString('base64');
 }
 
 function decodeText(encoded: string): string {
-  return Buffer.from(encoded, 'base64').toString('utf8');
+    return Buffer.from(encoded, 'base64').toString('utf8');
 }
 
 class ClaudeCodeServer {
