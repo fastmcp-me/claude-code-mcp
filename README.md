@@ -1,74 +1,87 @@
 # claude-code-mcp Project
 
 ## Overview
-このプロジェクトは、Claude Code MCP サーバーの構築と、それに付随するツール（explain_code、review_code、fix_code、edit_code、test_code、simulate_command、your_own_query）の実装を目的としています。サーバーは Node.js と MCP SDK を利用して実装され、Stdio 経由でクライアントからツールリクエストを受け取り、各ツール定義に基づいて `claude --print` コマンドを動的に生成・実行し、その結果をクライアントに返します。
 
-今回、提案された入力処理の改善アプローチとして**Base64エンコード方式**が採択されました。これにより、クライアント側は生の自然言語テキスト（コードやREADMEなど）をそのまま送信でき、MCPサーバー内部で特殊文字（改行、ダブルクオートなど）の問題をBase64エンコード／デコードにより確実に解決します。これがシステム全体の安定性と柔軟性を向上させるキーとなります。
+This project aims to build a Claude Code MCP server and implement its associated tools (explain_code, review_code, fix_code, edit_code, test_code, simulate_command, your_own_query). The server is implemented using Node.js and the MCP SDK. It receives tool requests from clients via Stdio, dynamically generates and executes `claude --print` commands based on each tool definition, and returns the results to the client.
 
-サーバーの主な役割は以下となります：
-- **リクエスト受信:** クライアントから JSON 形式のツールリクエストを受け取る（例: `code`, `context`, `focus_areas` など）。
-- **入力処理:** 受信した自然言語テキストを内部でBase64エンコード／デコード処理し、エスケープ問題を解決する。
-- **ツール選別とコマンド生成:** リクエストのツール名に応じて、固定テンプレートまたは自由形式（your_own_query）を用い、問い合わせ用のコマンド文字列を組み立てる。
-- **コマンド実行:** Node.js の child_process.exec を利用して、組み立てたコマンドを実行し、標準出力から結果を取得する。
-- **結果返送:** 実行結果を JSON 形式でクライアントに返す。
+The **Base64 encoding method** was adopted as the input processing improvement approach. This allows the client side to send raw natural language text (code, README, etc.) as is, and the MCP server reliably solves special character problems (line breaks, double quotes, etc.) internally by Base64 encoding/decoding. This is key to improving the stability and flexibility of the entire system.
 
-## 動作シーケンスの概要 (Sequence Diagram)
-TODO: 修正
+The main roles of the server are:
 
-## MCP Server Input Handling Strategy
-本セクションでは、現状の入力処理の状態と、提案されたアプローチの詳細、及び各案の比較マトリックスについて説明します。
+-   **Request Reception:** Receive JSON format tool requests from clients (e.g. `code`, `context`, `focus_areas`, etc.).
+-   **Input Processing:** Internally Base64 encode the received natural language text.
+-   **Tool Selection and Command Generation:** Based on the tool name in the request, assemble a command string for the query using a fixed template or free format (`your_own_query`).
+-   **Command Execution:** Use Node.js's `child_process.exec` to execute the assembled command and get the result from standard output.
+-   **Result Return:** Return the execution result to the client in JSON format.
 
-### 現状の状態
-- **入力形式:**  
-  各ツールは、JSON形式のパラメータ（例: `code`、`context`、`focus_areas` など）を受け取り、内部で固定のテンプレート（例:  
-  `claude --print "Review the following code and focus on: {focus_areas}\n{code}"`）を用いて Claude Code へ問い合わせています。
-- **問題点:**  
-  - 自然言語の非構造的データは改行やダブルクオートなど、特殊文字が多く含まれるため、直接JSON内に挿入するとエスケープ処理が非常に複雑になる。  
-  - 固定のテンプレートに依存すると、入力の自由度が低下し、ニュアンスが失われる可能性がある。
+## Getting Started
 
-### 採用されたアプローチ
-**Base64エンコード方式**を採択し、以下の方針をMCPサーバー内部に実装します：
-- **目的:**  
-  エスケープ処理の複雑性を低減し、どんなテキストでも安全にClaude Codeへ渡せるようにする。
-- **実施方法:**  
-  クライアントは生の自然言語テキストを送信し、MCPサーバー内部で自動的にBase64エンコード／デコード処理を実施して、最終的な問い合わせコマンドを生成する。
-- **メリット:**  
-  - クライアント側はシンプルなデータ送信で済み、特殊文字のエスケープについて心配不要。  
-  - 全体としてシステムの安定性、柔軟性、メンテナンス性が向上する。
+### Prerequisites
 
-### 提案される各アプローチの比較マトリックス
-| アプローチ                 | 実装の複雑さ | 柔軟性 | 特殊文字耐性 | コード・非コードテキスト向き |
-|----------------------------|--------------|--------|--------------|----------------------------|
-| 固定テンプレートクエリ方式 | 低           | 低     | 高           | 中程度                     |
-| 自由な自然言語クエリ方式   | 中           | 高     | 低 (エスケープ問題) | 高                        |
-| Base64エンコード方式       | 中           | 高     | 非常に高い   | 非常に高い                 |
-| ファイル参照方式           | 低           | 中     | 非常に高い   | 中程度                     |
+-   Node.js (tested with v22.14.0)
+-   npm (or yarn)
+-   Claude Code command installed and auth completed.
+    https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview
 
-### 決定方針
-上記の比較から、**Base64エンコード方式**を採用し、**エンコード／デコード処理はMCPサーバー内部で実施**することに決定しました。これにより、クライアントは生テキストを送信でき、サーバーで特殊文字問題を一括して処理、Claude Codeへの問い合わせ内容が正確に伝達されます。
+### Installation
 
-## MCP Host Configuration Example
-以下は、MCP Host に設定するための設定例です：
+1.  Clone the repository:
+
+    ```bash
+    git clone https://github.com/KunihiroS/claude-code-mcp.git
+    cd claude-code-mcp
+    ```
+2.  Install dependencies:
+
+    ```bash
+    cd claude-code-server
+    npm install
+    ```
+
+3.  Create a `.env` file in the `claude-code-server` directory based on `.env.example` and set the environment variables.  You must set `CLAUDE_BIN` to the path of your Claude CLI executable.
+
+4.  Build the server:
+
+    ```bash
+    npm run build
+    ```
+### Usage
+
+Add the following to your MCP Host application settings :
 
 ```json
-{
-  "mcpServers": {
     "claude-code-server": {
       "command": "node",
-      "args": ["/home/kunihiros/dev/aider/projects/claude-code-mcp/claude-code-server/build/index.js"],
-      "env": {},
+      "args": [
+        "FULL PATH-TO-YOUR-DIRECTORY/claude-code-mcp/claude-code-server/build/index.js"
+      ],
       "disabled": false,
-      "autoApprove": []
     }
-  }
-}
 ```
+(may required restart host application.)
 
 ## Environment Variables
 
 This server uses the following environment variables:
 
-- `CLAUDE_BIN`:  Claude CLI 実行ファイルへのパスを指定します。(必須)
-- `LOG_LEVEL`:  ログレベルを指定します。(オプション、デフォルトは `info`)
+-   `CLAUDE_BIN`: Specifies the path to the Claude CLI executable. (Required)  
+    Example: /home/linuxbrew/.linuxbrew/bin/claude
+-   `LOG_LEVEL`: Specifies the log level. (Optional, defaults to `info`)
 
-これらの変数を設定するために、`claude-code-server` ディレクトリに `.env` ファイルを作成する必要があります。`.env.example` をテンプレートとして利用してください。
+To set these variables, you need to create a `.env` file in the `claude-code-server` directory. Use `.env.example` as a template.
+
+## Available Tools
+The `claude-code-server` provides the following tools:
+
+- `explain_code`: Provides a detailed explanation of the given code.
+- `review_code`: Reviews the given code.
+- `fix_code`: Fixes bugs or issues in the given code.
+- `edit_code`: Edits the given code based on instructions.
+- `test_code`: Generates tests for the given code.
+- `simulate_command`: Simulates the execution of a given command.
+- `your_own_query`: Sends a custom query with context.
+
+## Note
+
+- Log rotation is not implemented yet.
+- Only tested with Cline / Ubuntu / WSL2.
