@@ -36,7 +36,7 @@ const initialLogger = winston.createLogger({
 const envPaths = [
   path.resolve(__dirname, '../.env'),        // 開発環境
   path.resolve(__dirname, '../../.env'),     // ビルド後の環境
-  path.resolve(process.cwd(), '.env')        // カレントディレクトリ
+  path.resolve(process.cwd(), 'claude-code-server/.env')        // カレントディレクトリ
 ];
 
 let envLoaded = false;
@@ -59,20 +59,35 @@ if (!envLoaded) {
   initialLogger.warn('確認したパス: ' + envPaths.join(', '));
 }
 
-// 完全なロガーの設定（.envファイルの設定を反映）
+// ログレベルの明示的な確認（デバッグ用）
+console.log(`環境変数LOG_LEVEL: ${process.env.LOG_LEVEL}`);
+
+// ロガー設定の修正
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: createLoggerFormat(),
   transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'claude-code-server.log' })
+    new winston.transports.Console({
+      level: process.env.LOG_LEVEL || 'info',  // 明示的に指定
+    }),
+    new winston.transports.File({
+      filename: path.resolve(__dirname, '../../claude-code-server.log'),
+      level: process.env.LOG_LEVEL || 'info'   // 明示的に指定
+    })
   ]
 });
+
+// ロガーが正しく設定されているか確認
+logger.error('エラーログテスト');
+logger.warn('警告ログテスト');
+logger.info('情報ログテスト');
+logger.debug('デバッグログテスト - これがログに出力されれば LOG_LEVEL=debug が機能しています');
 
 // 環境変数設定の確認をログ出力
 logger.debug('環境変数の読み込み結果:');
 logger.debug(`CLAUDE_BIN=${process.env.CLAUDE_BIN || '未設定'}`);
 logger.debug(`LOG_LEVEL=${process.env.LOG_LEVEL || 'デフォルト(info)'}`);
+logger.info(`LOG_LEVEL=${process.env.LOG_LEVEL || 'デフォルト(info)'}`);
 
 
 // claudeコマンドのパスを環境変数 CLAUDE_BIN から取得
