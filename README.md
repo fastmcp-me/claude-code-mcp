@@ -83,5 +83,22 @@ The `claude-code-server` provides the following tools:
 
 ## Note
 
-- Log rotation is not implemented yet. (be careful on the size of .log)
-- Only tested with Cline / Ubuntu / WSL2.
+- Log file (.log) creation timing:
+  1. Initially no log file is created when running commands through the claude-code-mcp Server
+  2. Log file is created only after changing workspace location and then returning to the claude-code-mcp workspace
+  3. Once created, the log file is properly updated with server operations and command executions
+
+- Log file behavior pattern:
+  1. First file creation: Only contains process termination timestamp
+  2. Subsequent workspace open: Initializes with server startup logs and CLI verification
+  3. Command execution: Appends detailed operation logs including CLI execution details
+  4. Workspace change: Appends process termination message
+
+    **The above is because of MCP Server spec (assumption).**
+
+- Log file location:
+  - Created in the project root as 'claude-code-server.log'
+  - Follows fallback path logic (project root → home directory → /tmp) but primarily uses project root
+
+- Log rotation is not implemented yet (be careful on the log file size)
+- Only tested with Claude CLI / Ubuntu / WSL2
