@@ -2,10 +2,16 @@
 
 ## Overview
 
-This project aims to build a Claude Code MCP server and implement its associated tools (explain_code, review_code, fix_code, edit_code, test_code, simulate_command, your_own_query). The server is implemented using Node.js and the MCP SDK. It receives tool requests from clients via Stdio, dynamically generates and executes `claude --print` commands based on each tool definition, and returns the results to the client.
+The claude-code-mcp project is an MCP server for Claude Code.
 
-The **Base64 encoding method** was adopted as the input processing improvement approach. This allows the client side to send raw natural language text (code, README, etc.) as is, and the MCP server reliably solves special character problems (line breaks, double quotes, etc.) internally by Base64 encoding/decoding. This is key to improving the stability and flexibility of the entire system.
+It calls the locally installed Claude Code command and provides the following tools: explain_code, review_code, fix_code, edit_code, test_code, simulate_command, and your_own_query.  The server is implemented using Node.js and the MCP SDK, receiving JSON format requests from clients via stdio. Internally, it adopts Base64 encoding to smoothly process special characters (newlines, quotation marks, etc.) in natural language text, resulting in improved stability and flexibility. Its main roles are receiving requests, encoding input, generating and executing commands, and returning execution results in JSON format.
+This project has been confirmed to work in Claude Code CLI environments (Ubuntu/WSL2, etc.).
 
+💡  
+MCP Host with less capable LLM, can tame and make use of Claude power💪!  
+With claude-code-mcp, you can also call Claude Code from Claude Desktop!! 😇😜😎 (unconfirmed)
+
+## Functions
 The main roles of the server are:
 
 -   **Request Reception:** Receive JSON format tool requests from clients (e.g. `code`, `context`, `focus_areas`, etc.).
