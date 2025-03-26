@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import * as fs from 'fs';
+import os from 'os'; // Import the os module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // ロガーのフォーマット設定を共通化
@@ -29,7 +30,9 @@ const initialLogger = winston.createLogger({
 const envPaths = [
     path.resolve(__dirname, '../.env'),
     path.resolve(__dirname, '../../.env'),
-    path.resolve(process.cwd(), 'claude-code-server/.env') // カレントディレクトリ
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'claude-code-server/.env'),
+    path.resolve(os.homedir(), '.claude-code-mcp.env') // ホームディレクトリの .claude-code-mcp.env
 ];
 let envLoaded = false;
 for (const envPath of envPaths) {
@@ -51,9 +54,12 @@ for (const envPath of envPaths) {
 }
 // .envファイルが見つからなかった場合のユーザーフレンドリーなメッセージ
 if (!envLoaded) {
-    initialLogger.warn('No .env file found. Please create one based on .env.example.');
-    initialLogger.warn('Checked paths: ' + envPaths.join(', '));
-    initialLogger.debug('Running with default environment settings');
+    initialLogger.warn('No .env file found. Please create either:');
+    initialLogger.warn(`1. A .env file in your current directory (${process.cwd()})`);
+    initialLogger.warn(`2. A .claude-code-mcp.env file in your home directory (${os.homedir()})`);
+    initialLogger.warn('  (Refer to .env.example for required variables like CLAUDE_BIN)');
+    initialLogger.debug('Checked paths: ' + envPaths.join(', '));
+    initialLogger.debug('Running with potentially missing environment settings');
 }
 // ログレベルの明示的な確認（デバッグ用）
 console.log(`Environment variable LOG_LEVEL: ${process.env.LOG_LEVEL}`);
