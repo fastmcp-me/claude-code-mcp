@@ -1,21 +1,21 @@
 {
   "name": "@kunihiros/claude-code-mcp",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "MCP server for Claude Code",
-  "main": "build/index.js",
+  "main": "claude-code-server/build/index.js",
   "type": "module",
   "bin": {
-    "claude-code-mcp": "./build/index.js"
+    "claude-code-mcp": "./claude-code-server/build/index.js"
   },
   "files": [
-    "build/**/*",
+    "claude-code-server/build/**/*",
     "README.md",
     "LICENSE",
-    ".env.example"
+    "claude-code-server/.env.example"
   ],
   "scripts": {
-    "build": "tsc && chmod +x build/index.js",
-    "start": "node build/index.js",
+    "build": "cd claude-code-server && npx tsc && chmod +x build/index.js",
+    "start": "node claude-code-server/build/index.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

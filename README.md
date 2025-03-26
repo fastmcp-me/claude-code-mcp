@@ -1,5 +1,9 @@
 # claude-code-mcp Project
 
+## Update
+
+Now this MCP Server works without local install by npx!!
+
 ## Overview
 
 The claude-code-mcp project is an MCP server for Claude Code.
@@ -77,10 +81,11 @@ node build/index.js
 
 Regardless of the installation method, you need to configure the environment variables. Create **one** of the following files:
 
-1.  A `.env` file in the directory where you run the `claude-code-mcp` or `npx` command.
-2.  A `.claude-code-mcp.env` file in your home directory (`~/.claude-code-mcp.env`).
+1.  **Using MCP Host Settings (Recommended for `npx`):** Configure environment variables directly within your MCP Host's settings (see "MCP Host Configuration" below). This is the easiest way when using `npx`.
+2.  **Using a `.env` file:** Create a `.env` file in the directory where you run the `npx @kunihiros/claude-code-mcp` command.
+3.  **Using a global config file:** Create a `.claude-code-mcp.env` file in your home directory (`~/.claude-code-mcp.env`).
 
-Add the following content to the file, adjusting the `CLAUDE_BIN` path:
+If using a file (`.env` or `~/.claude-code-mcp.env`), add the following content, adjusting the `CLAUDE_BIN` path:
 
 ```dotenv
 # .env or ~/.claude-code-mcp.env
@@ -88,9 +93,29 @@ CLAUDE_BIN=/path/to/your/claude/executable  # REQUIRED: Set the full path to you
 LOG_LEVEL=info                             # Optional: Set log level (e.g., debug, info, warn, error)
 ```
 
-**MCP Host Configuration:**
+**MCP Host Configuration (Recommended for `npx`):**
 
-Add the following to your MCP Host application settings (e.g., Claude Desktop settings):
+Add the following to your MCP Host application settings (e.g., Claude Desktop settings). This method allows you to set environment variables directly.
+
+```json
+    "claude-code-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@kunihiros/claude-code-mcp"
+      ],
+      "env": {
+        "CLAUDE_BIN": "/path/to/your/claude/executable", // REQUIRED: Set the absolute path
+        "LOG_LEVEL": "info"                             // Optional: Set log level
+      },
+      "disabled": false
+    }
+```
+*(Restarting the host application might be required.)*
+
+**Alternative MCP Host Configuration (Global Install / Local Dev):**
+
+If you installed the package globally or are running it locally from the cloned repository, and the `claude-code-mcp` command is in your system's PATH, you can use:
 
 ```json
     "claude-code-server": {
@@ -98,11 +123,11 @@ Add the following to your MCP Host application settings (e.g., Claude Desktop se
       "disabled": false
     }
 ```
-*(Restarting the host application might be required.)*
+In this case, you **must** configure environment variables using a `.env` file or the global `~/.claude-code-mcp.env` file as described above.
 
 ## Environment Variables Details
 
-This server uses the following environment variables (set via `.env` or `.claude-code-mcp.env`):
+This server uses the following environment variables (set via MCP Host `env` settings, `.env`, or `~/.claude-code-mcp.env`):
 
 -   `CLAUDE_BIN`: Specifies the path to the Claude CLI executable. **(Required)**
     Example: `/home/linuxbrew/.linuxbrew/bin/claude` or `C:\Users\YourUser\AppData\Local\bin\claude.exe`
