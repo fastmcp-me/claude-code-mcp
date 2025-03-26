@@ -39,7 +39,7 @@ There are several ways to use `claude-code-mcp`:
 You can run the server directly without installation using `npx`:
 
 ```bash
-npx claude-code-mcp
+npx @kunihiros/claude-code-mcp
 ```
 
 **2. Global Installation**
