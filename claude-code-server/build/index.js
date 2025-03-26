@@ -26,40 +26,31 @@ const initialLogger = winston.createLogger({
         new winston.transports.Console()
     ]
 });
-// .envファイルのロード試行（複数の候補パスを試す）
-const envPaths = [
-    path.resolve(__dirname, '../.env'),
-    path.resolve(__dirname, '../../.env'),
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(process.cwd(), 'claude-code-server/.env'),
-    path.resolve(os.homedir(), '.claude-code-mcp.env') // ホームディレクトリの .claude-code-mcp.env
-];
-let envLoaded = false;
-for (const envPath of envPaths) {
-    if (fs.existsSync(envPath)) {
-        const result = dotenv.config({ path: envPath });
-        if (result.error) {
-            initialLogger.error(`Failed to load .env file from ${envPath}: ${result.error.message}`);
+// MCP Hostからの環境変数を優先し、.envファイルはフォールバックとして扱う
+if (!process.env.CLAUDE_BIN) {
+    const envPaths = [
+        path.resolve(__dirname, '../.env'),
+        path.resolve(__dirname, '../../.env'),
+        path.resolve(process.cwd(), '.env'),
+        path.resolve(process.cwd(), 'claude-code-server/.env'),
+        path.resolve(os.homedir(), '.claude-code-mcp.env') // ホームディレクトリの .claude-code-mcp.env
+    ];
+    for (const envPath of envPaths) {
+        if (fs.existsSync(envPath)) {
+            const result = dotenv.config({ path: envPath });
+            if (result.error) {
+                initialLogger.error(`Failed to load .env file from ${envPath}: ${result.error.message}`);
+            }
+            else {
+                initialLogger.info(`Successfully loaded .env file from ${envPath}`);
+                initialLogger.debug(`Loaded environment variables: LOG_LEVEL=${process.env.LOG_LEVEL}, CLAUDE_BIN=${process.env.CLAUDE_BIN}`);
+                break;
+            }
         }
         else {
-            initialLogger.info(`Successfully loaded .env file from ${envPath}`);
-            initialLogger.debug(`Loaded environment variables: LOG_LEVEL=${process.env.LOG_LEVEL}, CLAUDE_BIN=${process.env.CLAUDE_BIN}`);
-            envLoaded = true;
-            break;
+            initialLogger.debug(`CLAUDE_BIN fallback search: environment file at ${envPath} does not exist [MCP Host settings: not found]`);
         }
     }
-    else {
-        initialLogger.debug(`Environment file not found at path: ${envPath}`);
-    }
-}
-// .envファイルが見つからなかった場合のユーザーフレンドリーなメッセージ
-if (!envLoaded) {
-    initialLogger.warn('No .env file found. Please create either:');
-    initialLogger.warn(`1. A .env file in your current directory (${process.cwd()})`);
-    initialLogger.warn(`2. A .claude-code-mcp.env file in your home directory (${os.homedir()})`);
-    initialLogger.warn('  (Refer to .env.example for required variables like CLAUDE_BIN)');
-    initialLogger.debug('Checked paths: ' + envPaths.join(', '));
-    initialLogger.debug('Running with potentially missing environment settings');
 }
 // ログレベルの明示的な確認（デバッグ用）
 console.log(`Environment variable LOG_LEVEL: ${process.env.LOG_LEVEL}`);
