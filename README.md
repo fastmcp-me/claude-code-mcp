@@ -11,6 +11,10 @@ The claude-code-mcp project is an MCP server for Claude Code.
 It calls the locally installed Claude Code command and provides the following tools: `explain_code`, `review_code`, `fix_code`, `edit_code`, `test_code`, `simulate_command`, and `your_own_query`. The server is implemented using Node.js and the MCP SDK, receiving JSON format requests from clients via stdio. Internally, it adopts Base64 encoding to smoothly process special characters (newlines, quotation marks, etc.) in natural language text, resulting in improved stability and flexibility. Its main roles are receiving requests, encoding input, generating and executing commands, and returning execution results in JSON format.
 This project has been confirmed to work in Claude Code CLI environments (Ubuntu/WSL2, etc.).
 
+<a href="https://glama.ai/mcp/servers/@KunihiroS/claude-code-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@KunihiroS/claude-code-mcp/badge" alt="claude-code-mcp MCP server" />
+</a>
+
 💡
 MCP Host with less capable LLM, can tame and make use of Claude power💪!
 With claude-code-mcp, you can also call Claude Code from Claude Desktop!! 😇😜😎 (unconfirmed)
