@@ -219,29 +219,54 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-// claudeコマンドのパスを環境変数 CLAUDE_BIN から取得
-const CLAUDE_BIN = process.env.CLAUDE_BIN;
+// CLAUDE_BIN Validation
+let validatedClaudePath: string | null = null;
+const EXPECTED_EXECUTABLE_BASENAME = 'claude';
+const IS_WINDOWS = process.platform === 'win32';
 
-if (!CLAUDE_BIN) {
-    logger.error('Error: CLAUDE_BIN environment variable is not set.');
-    logger.debug('Missing required CLAUDE_BIN environment variable, exiting');
-    process.exit(1);
+const claudeBinFromEnv = process.env.CLAUDE_BIN;
+
+if (!claudeBinFromEnv) {
+  logger.error("CRITICAL: CLAUDE_BIN environment variable is not set. This is a required setting. Server exiting.");
+  process.exit(1);
 }
 
-// 実行前にClaude CLIの存在を確認し、バージョンも出力
-if (CLAUDE_BIN) {
-    try {
-        logger.debug(`Checking Claude CLI at path: ${CLAUDE_BIN}`);
-        const versionOutput = child_process.execSync(`${CLAUDE_BIN} --version`, { encoding: 'utf8' });
-        logger.info(`Claude CLI found: ${versionOutput.trim()}`);
-        logger.debug(`Claude CLI version details: ${versionOutput.trim()}`);
-    }
-    catch (err) {
-        logger.error(`Warning: Unable to execute Claude CLI (${CLAUDE_BIN}). Error details:`, err);
-        logger.debug(`PATH environment: ${process.env.PATH}`);
-        logger.debug(`Failed to execute Claude CLI: ${err instanceof Error ? err.stack : String(err)}`);
-        // プログラムは続行します - ランタイムでも再チェックします
-    }
+const resolvedPath = path.resolve(claudeBinFromEnv);
+const basename = path.basename(resolvedPath);
+
+let isValidBasename = false;
+if (IS_WINDOWS) {
+    isValidBasename = (basename.toLowerCase() === EXPECTED_EXECUTABLE_BASENAME || basename.toLowerCase() === `${EXPECTED_EXECUTABLE_BASENAME}.exe`);
+} else {
+    isValidBasename = (basename === EXPECTED_EXECUTABLE_BASENAME);
+}
+
+if (!isValidBasename) {
+  logger.error(`CRITICAL: CLAUDE_BIN ("${claudeBinFromEnv}") resolved to "${resolvedPath}", which does not have the expected basename "${EXPECTED_EXECUTABLE_BASENAME}". Basename found: "${basename}". Server exiting.`);
+  process.exit(1);
+}
+
+try {
+  fs.accessSync(resolvedPath, fs.constants.X_OK); // Check for existence and execute permission
+  validatedClaudePath = resolvedPath; // Set the validated path
+  logger.info(`CLAUDE_BIN validated. Using executable: ${validatedClaudePath}`);
+
+  // Now, perform the version check using the validated path
+  try {
+    logger.debug(`Checking Claude CLI version at path: ${validatedClaudePath}`);
+    // Quote the path in case it contains spaces, for reliability with execSync
+    const versionOutput = child_process.execSync(`"${validatedClaudePath}" --version`, { encoding: 'utf8' });
+    logger.info(`Claude CLI Version: ${versionOutput.trim()}`);
+  } catch (err) {
+    logger.warn(`Could not get Claude CLI version from validated path "${validatedClaudePath}". It might not be a valid Claude executable or is not working correctly. Error: ${err instanceof Error ? err.message : String(err)}`);
+    logger.debug(`Failed to execute Claude CLI for version check: ${err instanceof Error ? err.stack : String(err)}`);
+    // Original code continued even if version check failed, so this does too.
+    // The main validation (name, existence, executability) has already passed.
+  }
+
+} catch (err) {
+  logger.error(`CRITICAL: CLAUDE_BIN ("${claudeBinFromEnv}") resolved to "${resolvedPath}", but it is not executable or does not exist. Error: ${err instanceof Error ? err.message : String(err)}. Server exiting.`);
+  process.exit(1);
 }
 
 // Base64 エンコード／デコード ヘルパー関数
@@ -397,14 +422,20 @@ class ClaudeCodeServer {
           
           try {
             // より詳細なデバッグ情報
-            logger.debug(`Executing Claude CLI at path: ${CLAUDE_BIN}`);
+            logger.debug(`Executing Claude CLI at path: ${validatedClaudePath}`);
             logger.debug(`Claude CLI arguments: ${JSON.stringify(claudeArgs)}`);
             if (stdinInput) logger.debug(`Input length: ${stdinInput.length} characters`);
             
             // 環境変数をログに出力
             logger.debug(`Environment PATH: ${process.env.PATH}`);
             
-            const proc = child_process.spawn(CLAUDE_BIN!, claudeArgs, {
+            if (validatedClaudePath === null) {
+                logger.error('validatedClaudePath is null. Claude CLI cannot be executed.');
+                // エラーをクライアントに返すなど、より丁寧なエラー処理を検討してください。
+                throw new Error('Validated Claude CLI path is not available. Please check CLAUDE_BIN environment variable or server configuration.');
+            }
+
+            const proc = child_process.spawn(validatedClaudePath, claudeArgs, {
                 env: { ...process.env },
                 stdio: ['pipe', 'pipe', 'pipe']
             }) as child_process.ChildProcess;

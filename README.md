@@ -1,8 +1,12 @@
 # claude-code-mcp Project
 
-## Update
+## [0.1.3] - 2025-05-08
 
-Now this MCP Server works without local install by npx!!
+### Changed
+- Enhanced security by strictly validating the `CLAUDE_BIN` environment variable. The server now verifies the executable's path, name, existence, and permissions before use.
+
+### Fixed
+- Addressed a potential command injection vulnerability related to the `CLAUDE_BIN` environment variable.
 
 ## Overview
 
