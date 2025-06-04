@@ -1,12 +1,13 @@
 # claude-code-mcp Project
 
-## [0.1.3] - 2025-05-08
+## [0.1.4] - 2025-06-04
 
 ### Changed
-- Enhanced security by strictly validating the `CLAUDE_BIN` environment variable. The server now verifies the executable's path, name, existence, and permissions before use.
+- Updated dependency: `@anthropic-ai/claude-code` to the latest version (`0.2.126` as of 2025-06-04).
+- Removed the transitive dependency on the vulnerable `tar-fs` (<2.1.3) to address a security alert (CVE).
 
 ### Fixed
-- Addressed a potential command injection vulnerability related to the `CLAUDE_BIN` environment variable.
+- Added a record of the tar-fs vulnerability (CVE) mitigation.
 
 ## Overview
 

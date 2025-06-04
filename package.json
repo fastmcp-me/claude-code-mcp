@@ -24,7 +24,7 @@
     "winston": "^3.13.0"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "^0.2.103",
+    "@anthropic-ai/claude-code": "^0.2.126",
     "@types/dotenv": "^8.2.0",
     "@types/node": "^20.17.43",
     "typescript": "^4.9.5"
