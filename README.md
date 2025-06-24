@@ -1,13 +1,10 @@
 # claude-code-mcp Project
 
-## [0.1.4] - 2025-06-04
 
-### Changed
-- Updated dependency: `@anthropic-ai/claude-code` to the latest version (`0.2.126` as of 2025-06-04).
-- Removed the transitive dependency on the vulnerable `tar-fs` (<2.1.3) to address a security alert (CVE).
+## [0.1.5] - 2025-06-24
 
-### Fixed
-- Added a record of the tar-fs vulnerability (CVE) mitigation.
+### Security Update
+- Update @anthropic-ai/claude-code version.
 
 ## Overview
 
